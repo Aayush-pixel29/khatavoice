@@ -13,8 +13,18 @@ export function getTodayDateString(): string {
  * Calculates number of days between two YYYY-MM-DD or ISO strings
  */
 export function calculateDaysAgo(dateString: string): number {
-  const targetDate = new Date(dateString.split('T')[0]).getTime();
+  if (!dateString) return 0;
+  let datePart = dateString.split('T')[0];
+  if (dateString.includes('T')) {
+    const d = new Date(dateString);
+    if (!isNaN(d.getTime())) {
+      const istTime = new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
+      datePart = istTime.toISOString().split('T')[0];
+    }
+  }
+  const targetDate = new Date(datePart).getTime();
   const today = new Date(getTodayDateString()).getTime();
   const diffMs = Math.max(0, today - targetDate);
   return Math.floor(diffMs / (1000 * 60 * 60 * 24));
 }
+

@@ -335,12 +335,15 @@ app.get('/api/ledger/dashboard', mcpAuthMiddleware, async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`=======================================================`);
-  console.log(`  🎙️  KhataVoice MCP Server running on port ${PORT}`);
-  console.log(`  ⚡  Canonical Endpoint: POST/GET/DELETE http://localhost:${PORT}/mcp`);
-  console.log(`  📊  Health Endpoint:    GET http://localhost:${PORT}/health`);
-  console.log(`  ⚙️   Transport Mode:     Stateless Streamable HTTP (MCP 2025-11-25)`);
-  console.log(`  💾  Storage Driver:     ${process.env.STORAGE_DRIVER || 'memory'}`);
-  console.log(`=======================================================`);
-});
+if (!process.env.VITEST && process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`=======================================================`);
+    console.log(`  🎙️  KhataVoice MCP Server running on port ${PORT}`);
+    console.log(`  ⚡  Canonical Endpoint: POST/GET/DELETE http://localhost:${PORT}/mcp`);
+    console.log(`  📊  Health Endpoint:    GET http://localhost:${PORT}/health`);
+    console.log(`  ⚙️   Transport Mode:     Stateless Streamable HTTP (MCP 2025-11-25)`);
+    console.log(`  💾  Storage Driver:     ${process.env.STORAGE_DRIVER || 'memory'}`);
+    console.log(`=======================================================`);
+  });
+}
+

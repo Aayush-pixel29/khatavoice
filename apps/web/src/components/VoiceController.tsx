@@ -17,6 +17,9 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
   const [transcript, setTranscript] = useState('');
   const [supported, setSupported] = useState(true);
   const recognitionRef = useRef<any>(null);
+  const transcriptRef = useRef<string>('');
+  const onProcessUtteranceRef = useRef(onProcessUtterance);
+  onProcessUtteranceRef.current = onProcessUtterance;
 
   useEffect(() => {
     const SpeechRecognition =
@@ -37,6 +40,7 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
       for (let i = 0; i < event.results.length; i++) {
         current += event.results[i][0].transcript;
       }
+      transcriptRef.current = current;
       setTranscript(current);
     };
 
@@ -47,13 +51,20 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
 
     recognition.onend = () => {
       setIsRecording(false);
-      if (transcript.trim()) {
-        onProcessUtterance(transcript.trim());
+      const finalText = transcriptRef.current.trim();
+      if (finalText) {
+        onProcessUtteranceRef.current(finalText);
       }
     };
 
     recognitionRef.current = recognition;
-  }, [transcript, onProcessUtterance]);
+
+    return () => {
+      try {
+        recognition.abort();
+      } catch {}
+    };
+  }, []);
 
   // Handle TTS playback when a new voice response arrives
   useEffect(() => {
@@ -76,6 +87,7 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
       recognitionRef.current?.stop();
       setIsRecording(false);
     } else {
+      transcriptRef.current = '';
       setTranscript('');
       try {
         recognitionRef.current?.start();
@@ -87,6 +99,7 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
   };
 
   const handleChipClick = (promptText: string) => {
+    transcriptRef.current = promptText;
     setTranscript(promptText);
     onProcessUtterance(promptText);
   };
@@ -124,7 +137,7 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
         ) : (
           <p className="transcript-placeholder">
             {isRecording
-              ? 'Speak naturally (e.g. "Ramesh ko 500 rupaye udhaar")...'
+              ? 'Speak naturally (e.g. "Ramesh ko 3200 rupaye udhaar")...'
               : 'Tap microphone to speak or click any simulation chip below'}
           </p>
         )}
@@ -137,15 +150,71 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
         </div>
       )}
 
+      <form
+        className="voice-input-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (transcript.trim() && !isProcessing) {
+            handleChipClick(transcript.trim());
+          }
+        }}
+        style={{ display: 'flex', gap: '0.5rem', width: '100%', maxWidth: '640px', margin: '0.75rem auto 0' }}
+      >
+        <input
+          id="voice-command-input"
+          name="voiceCommand"
+          type="text"
+          className="voice-text-input"
+          placeholder="Speak with mic, click chip, or type voice command..."
+          value={transcript}
+          onChange={(e) => {
+            setTranscript(e.target.value);
+            transcriptRef.current = e.target.value;
+          }}
+          disabled={isProcessing}
+          style={{
+            flex: 1,
+            padding: '0.6rem 1rem',
+            borderRadius: '9999px',
+            border: '1px solid var(--border-glass)',
+            background: 'var(--bg-glass)',
+            color: 'var(--text-main)',
+            fontSize: '0.9rem'
+          }}
+        />
+        <button
+          type="submit"
+          className="chip-btn"
+          disabled={isProcessing || !transcript.trim()}
+          style={{ borderRadius: '9999px', padding: '0.6rem 1.2rem', whiteSpace: 'nowrap' }}
+        >
+          Send ↵
+        </button>
+      </form>
+
       <div className="quick-prompts">
         <span className="quick-prompts-label">One-Click Voice Simulation Chips</span>
         <div className="prompt-chips">
           <button
             className="chip-btn"
-            onClick={() => handleChipClick('Ramesh ko 500 rupaye udhaar')}
+            onClick={() => handleChipClick('Ramesh ko 3200 rupaye udhaar')}
             disabled={isProcessing}
           >
-            <span>➕</span> "Ramesh ko 500 rupaye udhaar"
+            <span>➕</span> "Ramesh ko 3200 rupaye udhaar"
+          </button>
+          <button
+            className="chip-btn"
+            onClick={() => handleChipClick('Ramesh ka balance batao')}
+            disabled={isProcessing}
+          >
+            <span>🔍</span> "Ramesh ka balance batao"
+          </button>
+          <button
+            className="chip-btn"
+            onClick={() => handleChipClick('Aaj kin logon se paise lene chahiye?')}
+            disabled={isProcessing}
+          >
+            <span>🎯</span> "Aaj kin logon se paise lene chahiye?"
           </button>
           <button
             className="chip-btn"
@@ -159,14 +228,7 @@ export const VoiceController: React.FC<VoiceControllerProps> = ({
             onClick={() => handleChipClick('Sharma General Store ka balance batao')}
             disabled={isProcessing}
           >
-            <span>🔍</span> "Sharma General Store ka balance batao"
-          </button>
-          <button
-            className="chip-btn"
-            onClick={() => handleChipClick('Kitna lena baaki hai?')}
-            disabled={isProcessing}
-          >
-            <span>📋</span> "Kitna lena baaki hai?"
+            <span>📋</span> "Sharma General Store ka balance batao"
           </button>
           <button
             className="chip-btn"
