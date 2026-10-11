@@ -26,11 +26,44 @@ export interface CopilotPlanOptions {
   query?: string;
 }
 
+export interface CopilotScoredDebtor {
+  customerName: string;
+  amountOwed: number;
+  daysPending: number;
+  /** Collection Priority Score = amountOwed * (1 + daysPending / 30), rounded to 2 decimals for display */
+  collectionPriorityScore: number;
+}
+
+/**
+ * Read-only report of what actually happened during a Copilot run.
+ * Used by the UI / MCP Inspector so the demo never claims a step that did not run.
+ */
+export interface CopilotDiagnostics {
+  /** 'bedrock' = Bedrock Converse produced the draft; 'deterministic-fallback' = local reasoning; 'none' = no dues, nothing to reason over */
+  reasoningEngine: 'bedrock' | 'deterministic-fallback' | 'none';
+  modelId?: string;
+  /** Why Bedrock was not used (no credentials, or the error that triggered fallback) */
+  fallbackReason?: string;
+  /** Exact field names sent to Bedrock per debtor (phone is intentionally excluded) */
+  bedrockDebtorFields: string[];
+  scoring: CopilotScoredDebtor[];
+  validation: {
+    passed: boolean;
+    schemaValid: boolean;
+    droppedCustomers: string[];
+    correctedAmounts: string[];
+    totalCorrected: boolean;
+  };
+}
+
 export interface CopilotPlanResponse {
   copilotResult: CollectionsCopilotResult;
   voiceMessage: string;
   mcpToolCalls: Array<{ tool: string; result: any }>;
+  diagnostics: CopilotDiagnostics;
 }
+
+const BEDROCK_DEBTOR_FIELDS = ['customerName', 'amount', 'daysOverdue'];
 
 export class CollectionsCopilot {
   private bedrockClient: BedrockRuntimeClient | null = null;
@@ -98,7 +131,14 @@ export class CollectionsCopilot {
       return {
         copilotResult: emptyResult,
         voiceMessage: 'Dukan par koi bhi udhaar pending nahi hai. Kisi se paise lene ki zaroorat nahi hai.',
-        mcpToolCalls
+        mcpToolCalls,
+        diagnostics: {
+          reasoningEngine: 'none',
+          fallbackReason: 'No outstanding dues; LLM not invoked',
+          bedrockDebtorFields: BEDROCK_DEBTOR_FIELDS,
+          scoring: [],
+          validation: { passed: true, schemaValid: true, droppedCustomers: [], correctedAmounts: [], totalCorrected: false }
+        }
       };
     }
 
@@ -122,18 +162,27 @@ export class CollectionsCopilot {
     }
 
     let copilotResult: CollectionsCopilotResult;
+    let reasoningEngine: CopilotDiagnostics['reasoningEngine'];
+    let fallbackReason: string | undefined;
 
     // 4. Bedrock Reasoning Layer
     if (this.bedrockClient) {
       try {
         copilotResult = await this.reasonWithBedrock(userQuery, totalOutstanding, topDebtors, allowedCustomerMap);
+        reasoningEngine = 'bedrock';
       } catch (err) {
         console.warn('[CollectionsCopilot] Bedrock inference failed, falling back to deterministic reasoning:', err);
         copilotResult = this.deterministicReasoning(totalOutstanding, topDebtors);
+        reasoningEngine = 'deterministic-fallback';
+        fallbackReason = `Bedrock error: ${err instanceof Error ? err.message : String(err)}`;
       }
     } else {
       copilotResult = this.deterministicReasoning(totalOutstanding, topDebtors);
+      reasoningEngine = 'deterministic-fallback';
+      fallbackReason = 'No AWS credentials configured; Bedrock not called';
     }
+
+    const draft = copilotResult;
 
     // 5. Anti-Hallucination Guardrail: Enforce strict customer fidelity & trusted MCP data
     copilotResult = this.sanitizeResultAgainstRealLedger(copilotResult, allowedCustomerMap, totalOutstanding);
@@ -144,7 +193,59 @@ export class CollectionsCopilot {
     return {
       copilotResult,
       voiceMessage,
-      mcpToolCalls
+      mcpToolCalls,
+      diagnostics: {
+        reasoningEngine,
+        modelId: reasoningEngine === 'bedrock' ? this.modelId : undefined,
+        fallbackReason,
+        bedrockDebtorFields: BEDROCK_DEBTOR_FIELDS,
+        scoring: topDebtors.map(d => ({
+          customerName: d.customerName,
+          amountOwed: d.amountOwed,
+          daysPending: d.days,
+          collectionPriorityScore: Math.round(d.score * 100) / 100
+        })),
+        validation: this.buildValidationReport(draft, copilotResult, allowedCustomerMap, totalOutstanding)
+      }
+    };
+  }
+
+  /**
+   * Read-only comparison of the reasoning draft vs. the sanitized final result.
+   * Does not alter the result; only reports what the sanitizer changed and whether
+   * the final output matches the trusted MCP dataset exactly.
+   */
+  private buildValidationReport(
+    draft: CollectionsCopilotResult,
+    final: CollectionsCopilotResult,
+    allowedCustomerMap: Map<string, any>,
+    trustedTotal: number
+  ): CopilotDiagnostics['validation'] {
+    const finalKeys = new Set(final.priorities.map(p => p.customerName.toLowerCase().trim()));
+    const droppedCustomers = draft.priorities
+      .filter(p => !allowedCustomerMap.has(String(p.customerName ?? '').toLowerCase().trim()))
+      .map(p => String(p.customerName));
+    const correctedAmounts = draft.priorities
+      .filter(p => {
+        const m = allowedCustomerMap.get(String(p.customerName ?? '').toLowerCase().trim());
+        return m && finalKeys.has(String(p.customerName).toLowerCase().trim()) && m.amountOwed !== p.amount;
+      })
+      .map(p => String(p.customerName));
+
+    const schemaValid = CollectionsCopilotResultSchema.safeParse(final).success;
+    const allTrusted = final.priorities.every(p => {
+      const m = allowedCustomerMap.get(p.customerName.toLowerCase().trim());
+      return !!m && m.customerName === p.customerName && m.amountOwed === p.amount;
+    });
+    const uniqueNames = finalKeys.size === final.priorities.length;
+    const sequential = final.priorities.every((p, i) => p.priority === i + 1);
+
+    return {
+      passed: schemaValid && allTrusted && uniqueNames && sequential && final.totalOutstanding === trustedTotal,
+      schemaValid,
+      droppedCustomers,
+      correctedAmounts,
+      totalCorrected: draft.totalOutstanding !== trustedTotal
     };
   }
 
@@ -239,7 +340,7 @@ Produce the JSON object now.`;
     const priorities: CollectionsPriorityItem[] = topDebtors.map((d, idx) => {
       let reason: string;
       if (d.days > 0) {
-        reason = `${d.days} days overdue, highest balance of ${formatINR(d.amountOwed)}`;
+        reason = `${d.days} days overdue`;
       } else {
         reason = `Recent high-value receivable of ${formatINR(d.amountOwed)}`;
       }

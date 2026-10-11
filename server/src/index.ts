@@ -191,7 +191,10 @@ app.post('/mcp/message', async (req, res) => {
 // 4. Voice Processing Bridge (Speech Transcript -> Bedrock / NLP -> MCP Tool -> Audio Ready String)
 // Trust boundary: Protected by mcpAuthMiddleware when MCP_API_KEY is configured or in production.
 app.post('/api/voice/process', mcpAuthMiddleware, async (req, res) => {
-  const { text, merchant_id } = req.body;
+  // execute=false: return the parsed intent only, so the client performs the single
+  // tools/call itself over canonical POST /mcp (prevents double ledger mutation).
+  const { text, merchant_id, execute } = req.body;
+  const shouldExecute = execute !== false;
 
   if (!text || typeof text !== 'string') {
     res.status(400).json({ error: 'Text prompt is required' });
@@ -223,8 +226,14 @@ app.post('/api/voice/process', mcpAuthMiddleware, async (req, res) => {
         },
         copilotResult: plan.copilotResult,
         voiceMessage: plan.voiceMessage,
-        mcpToolCalls: plan.mcpToolCalls
+        mcpToolCalls: plan.mcpToolCalls,
+        diagnostics: plan.diagnostics
       });
+      return;
+    }
+
+    if (!shouldExecute) {
+      res.json({ success: true, userUtterance: text, intent, executed: false });
       return;
     }
 

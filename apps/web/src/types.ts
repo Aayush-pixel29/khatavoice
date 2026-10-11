@@ -71,11 +71,35 @@ export interface PriorityItem {
   amount: number;
   priority: number;
   reason: string;
+  collectionPriorityScore?: number;
+}
+
+export interface CopilotScoredDebtor {
+  customerName: string;
+  amountOwed: number;
+  daysPending: number;
+  collectionPriorityScore: number;
+}
+
+export interface CopilotDiagnostics {
+  reasoningEngine: 'bedrock' | 'deterministic-fallback' | 'none';
+  modelId?: string;
+  fallbackReason?: string;
+  bedrockDebtorFields: string[];
+  scoring: CopilotScoredDebtor[];
+  validation: {
+    passed: boolean;
+    schemaValid: boolean;
+    droppedCustomers: string[];
+    correctedAmounts: string[];
+    totalCorrected: boolean;
+  };
 }
 
 export interface CollectionsCopilotData {
   summary: string;
   totalOutstanding: number;
   priorities: PriorityItem[];
+  diagnostics?: CopilotDiagnostics;
 }
 

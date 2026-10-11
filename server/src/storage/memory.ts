@@ -37,20 +37,33 @@ export class InMemoryStore implements ILedgerStore {
     return `${merchantId}#${date}`;
   }
 
+  /**
+   * SYNTHETIC DEMO DATA (in-memory driver only). Names, phones and amounts are fictional.
+   * Entries are backdated so that aging (daysPending) and the Collection Priority Score
+   * are meaningful in the demo. The demo script itself adds "Ramesh", so no seeded
+   * customer shares that name.
+   */
   public seedDemoData(): void {
     const defaultMerchant = 'default_merchant';
-    const today = getTodayDateString();
 
-    const sampleCustomers: Array<{ name: string; phone: string; balance: number; credit: number; debit: number }> = [
-      { name: 'Ramesh Kumar', phone: '+919876543210', balance: 750, credit: 500, debit: 1250 },
-      { name: 'Sharma General Store', phone: '+919811223344', balance: 3400, credit: 1600, debit: 5000 },
-      { name: 'Pooja Verma', phone: '+919922334455', balance: 0, credit: 1500, debit: 1500 },
-      { name: 'Sunil Sweets', phone: '+919871122334', balance: 1200, credit: 800, debit: 2000 },
-      { name: 'Amit Trader', phone: '+919712345678', balance: 450, credit: 1000, debit: 1450 }
+    const daysAgoIso = (days: number, hourOffset = 0) =>
+      new Date(Date.now() - days * 86400000 - hourOffset * 3600000).toISOString();
+    const daysAgoDate = (days: number) => {
+      const ist = new Date(Date.now() - days * 86400000 + 5.5 * 3600000);
+      return ist.toISOString().split('T')[0];
+    };
+
+    const sampleCustomers: Array<{ name: string; phone: string; balance: number; credit: number; debit: number; daysAgo: number }> = [
+      { name: 'Sharma General Store', phone: '+910000000001', balance: 3400, credit: 1600, debit: 5000, daysAgo: 18 },
+      { name: 'Sunil Sweets', phone: '+910000000002', balance: 1200, credit: 800, debit: 2000, daysAgo: 9 },
+      { name: 'Mohan Lal', phone: '+910000000003', balance: 750, credit: 500, debit: 1250, daysAgo: 2 },
+      { name: 'Amit Trader', phone: '+910000000004', balance: 450, credit: 1000, debit: 1450, daysAgo: 4 },
+      { name: 'Pooja Verma', phone: '+910000000005', balance: 0, credit: 1500, debit: 1500, daysAgo: 1 }
     ];
 
     for (const c of sampleCustomers) {
       const key = this.getCustomerKey(defaultMerchant, c.name);
+      const lastTxAt = daysAgoIso(c.daysAgo);
       this.customers.set(key, {
         id: `c_${slugify(c.name)}`,
         merchantId: defaultMerchant,
@@ -60,38 +73,42 @@ export class InMemoryStore implements ILedgerStore {
         totalCredit: c.credit,
         totalDebit: c.debit,
         lastTxId: `tx_init_${slugify(c.name)}`,
-        lastTxAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        lastTxAt,
+        updatedAt: lastTxAt
       });
     }
 
-    // Seed sample transactions
-    const initialTxs: Array<{ name: string; amount: number; type: 'credit' | 'debit'; desc: string }> = [
-      { name: 'Ramesh Kumar', amount: 500, type: 'credit', desc: 'UPI repayment' },
-      { name: 'Ramesh Kumar', amount: 750, type: 'debit', desc: '5kg Aashirvaad Atta & 1L Mustard Oil' },
-      { name: 'Sharma General Store', amount: 3400, type: 'debit', desc: 'Wholesale spices box' },
-      { name: 'Pooja Verma', amount: 1500, type: 'credit', desc: 'Full monthly settlement' },
-      { name: 'Sunil Sweets', amount: 1200, type: 'debit', desc: 'Dairy milk and sugar crates' },
-      { name: 'Amit Trader', amount: 450, type: 'debit', desc: 'Packaging supplies' }
+    // Seed sample transactions (dated to match each customer's last activity)
+    const initialTxs: Array<{ name: string; amount: number; type: 'credit' | 'debit'; desc: string; daysAgo: number }> = [
+      { name: 'Sharma General Store', amount: 3400, type: 'debit', desc: 'Wholesale spices box', daysAgo: 18 },
+      { name: 'Sunil Sweets', amount: 1200, type: 'debit', desc: 'Dairy milk and sugar crates', daysAgo: 9 },
+      { name: 'Amit Trader', amount: 450, type: 'debit', desc: 'Packaging supplies', daysAgo: 4 },
+      { name: 'Mohan Lal', amount: 500, type: 'credit', desc: 'UPI repayment', daysAgo: 2 },
+      { name: 'Mohan Lal', amount: 750, type: 'debit', desc: '5kg atta & 1L mustard oil', daysAgo: 2 },
+      { name: 'Pooja Verma', amount: 1500, type: 'credit', desc: 'Full monthly settlement', daysAgo: 1 }
     ];
 
     let txIdx = 1;
+    const touchedDates = new Set<string>();
     for (const t of initialTxs) {
-      const now = new Date(Date.now() - (6 - txIdx) * 3600000).toISOString();
+      const date = daysAgoDate(t.daysAgo);
+      touchedDates.add(date);
       this.transactions.push({
-        id: `tx_00${txIdx++}`,
+        id: `tx_00${txIdx}`,
         merchantId: defaultMerchant,
         customerName: t.name,
         amount: t.amount,
         type: t.type,
         description: t.desc,
-        date: today,
-        createdAt: now
+        date,
+        createdAt: daysAgoIso(t.daysAgo, 6 - txIdx)
       });
+      txIdx++;
     }
 
-    // Compute initial daily summary
-    this.recomputeDailySummary(defaultMerchant, today);
+    for (const d of touchedDates) {
+      this.recomputeDailySummary(defaultMerchant, d);
+    }
   }
 
   private recomputeDailySummary(merchantId: string, date: string): void {

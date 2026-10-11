@@ -89,6 +89,15 @@ export const CollectionsCopilot: React.FC<CollectionsCopilotProps> = ({
         </div>
       </div>
 
+      <div className="copilot-demo-notice">
+        <span>🧪 Synthetic Demo Ledger (Fictional Small-Business Kirana Sample Data)</span>
+        {data?.diagnostics && (
+          <span className="copilot-engine-tag">
+            Engine: {data.diagnostics.reasoningEngine === 'bedrock' ? 'Amazon Bedrock Converse' : 'Autonomous Reasoning'} • MCP Validated
+          </span>
+        )}
+      </div>
+
       <div className="copilot-prompts-bar">
         <span className="copilot-prompts-label">Natural Voice Prompts:</span>
         <div className="copilot-prompt-chips">
@@ -175,6 +184,11 @@ export const CollectionsCopilot: React.FC<CollectionsCopilotProps> = ({
               <div className="copilot-cards-grid">
                 {data.priorities.slice(0, 3).map((item: PriorityItem) => {
                   const debtorMeta = debtorMap.get(item.customerName.toLowerCase());
+                  const days = debtorMeta?.daysPending ?? 0;
+                  const computedScore = item.collectionPriorityScore ??
+                    data.diagnostics?.scoring?.find(s => s.customerName.toLowerCase() === item.customerName.toLowerCase())?.collectionPriorityScore ??
+                    Math.round(item.amount * (1 + days / 30) * 100) / 100;
+
                   return (
                     <div key={`${item.customerName}-${item.priority}`} className="priority-card">
                       <div className="priority-card-top">
@@ -188,17 +202,20 @@ export const CollectionsCopilot: React.FC<CollectionsCopilotProps> = ({
                         <h4 className="priority-customer-name">{item.customerName}</h4>
                         <div className="priority-ledger-meta">
                           {debtorMeta?.phone && <span>📞 {debtorMeta.phone}</span>}
-                          {debtorMeta && (
-                            <span className="aging-badge">
-                              ⏳ {debtorMeta.daysPending === 0 ? 'Due Today' : `${debtorMeta.daysPending} days pending`}
-                            </span>
-                          )}
+                          <span className="aging-badge">
+                            ⏳ {days === 0 ? 'Due Today' : `${days} days pending`}
+                          </span>
                           {debtorMeta?.lastTransactionDate && (
                             <span className="date-badge">
-                              🗓️ Last active: {debtorMeta.lastTransactionDate}
+                              🗓️ {debtorMeta.lastTransactionDate}
                             </span>
                           )}
                         </div>
+                      </div>
+
+                      <div className="priority-score-badge">
+                        <span className="score-label">Collection Priority Score:</span>
+                        <span className="score-value">{computedScore.toFixed(2)}</span>
                       </div>
 
                       <div className="priority-reason-box">

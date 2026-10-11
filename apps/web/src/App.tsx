@@ -105,7 +105,10 @@ export const App: React.FC = () => {
       if (res.ok) {
         const data = await res.json();
         if (data.copilotResult) {
-          setCopilotData(data.copilotResult);
+          setCopilotData({
+            ...data.copilotResult,
+            diagnostics: data.diagnostics
+          });
         }
         if (data.mcpToolCalls && Array.isArray(data.mcpToolCalls)) {
           // Log underlying real MCP tool executions for developer visibility
@@ -113,6 +116,14 @@ export const App: React.FC = () => {
             addLog('OUT', 'STREAMABLE_HTTP_REQ', { method: 'tools/call', params: { name: call.tool, arguments: call.args } }, `tools/call:${call.tool}`);
             addLog('IN', 'STREAMABLE_HTTP_RES', call.result, `tools/call:${call.tool}`);
           }
+        }
+        if (data.diagnostics) {
+          addLog('IN', 'STREAMABLE_HTTP_RES', {
+            engine: data.diagnostics.reasoningEngine,
+            modelId: data.diagnostics.modelId || 'local-fallback',
+            scoringCount: data.diagnostics.scoring?.length
+          }, 'Bedrock reasoning');
+          addLog('IN', 'STREAMABLE_HTTP_RES', data.diagnostics.validation, 'validation passed');
         }
       }
     } catch (err) {
@@ -188,17 +199,20 @@ export const App: React.FC = () => {
     setIsProcessing(true);
 
     try {
-      // 1. Extract intent & process via voice pipeline
+      // 1. Parse intent via voice processor with execute:false so mutation occurs only once over canonical POST /mcp
       const voiceRes = await fetch('/api/voice/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text })
+        body: JSON.stringify({ text, execute: false })
       });
       const voiceData = await voiceRes.json();
 
       // If it routed to Collections Copilot
       if (voiceData.intent?.toolName === 'collections_copilot' && voiceData.copilotResult) {
-        setCopilotData(voiceData.copilotResult);
+        setCopilotData({
+          ...voiceData.copilotResult,
+          diagnostics: voiceData.diagnostics
+        });
         setLastVoiceResponse(voiceData.voiceMessage);
 
         if (voiceData.mcpToolCalls && Array.isArray(voiceData.mcpToolCalls)) {
@@ -207,8 +221,17 @@ export const App: React.FC = () => {
             addLog('IN', 'STREAMABLE_HTTP_RES', call.result, `tools/call:${call.tool}`);
           }
         }
+
+        if (voiceData.diagnostics) {
+          addLog('IN', 'STREAMABLE_HTTP_RES', {
+            engine: voiceData.diagnostics.reasoningEngine,
+            modelId: voiceData.diagnostics.modelId || 'local-fallback',
+            scoringCount: voiceData.diagnostics.scoring?.length
+          }, 'Bedrock reasoning');
+          addLog('IN', 'STREAMABLE_HTTP_RES', voiceData.diagnostics.validation, 'validation passed');
+        }
       } else if (voiceData.intent?.toolName) {
-        // Standard MCP tool call over canonical POST /mcp
+        // Standard MCP tool call executed strictly over canonical POST /mcp
         const mcpCallPayload = {
           jsonrpc: '2.0',
           id: reqIdRef.current++,

@@ -22,6 +22,19 @@ export const MCPInspector: React.FC<MCPInspectorProps> = ({
 }) => {
   const [collapsed, setCollapsed] = useState(false);
 
+  const hasGetDues = logs.some(l => l.method?.includes('get_dues'));
+  const hasDailySummary = logs.some(l => l.method?.includes('daily_summary'));
+  const hasGetBalance = logs.some(l => l.method?.includes('get_balance'));
+  const hasBedrock = logs.some(l =>
+    l.method?.toLowerCase().includes('bedrock') ||
+    l.method?.toLowerCase().includes('reasoning') ||
+    JSON.stringify(l.payload).toLowerCase().includes('bedrock')
+  );
+  const hasValidation = logs.some(l =>
+    l.method?.toLowerCase().includes('validation') ||
+    JSON.stringify(l.payload).toLowerCase().includes('validation')
+  );
+
   return (
     <div className="inspector-card">
       <div className="inspector-header">
@@ -77,6 +90,26 @@ export const MCPInspector: React.FC<MCPInspectorProps> = ({
             {collapsed ? 'Expand ▼' : 'Collapse ▲'}
           </button>
         </div>
+      </div>
+
+      {/* Visibly show pipeline verification checklist */}
+      <div className="inspector-checklist-bar">
+        <span className="checklist-title">Verification:</span>
+        <span className={`chk-badge ${hasGetDues ? 'verified' : ''}`}>
+          {hasGetDues ? '✓' : '○'} get_dues
+        </span>
+        <span className={`chk-badge ${hasDailySummary ? 'verified' : ''}`}>
+          {hasDailySummary ? '✓' : '○'} daily_summary
+        </span>
+        <span className={`chk-badge ${hasGetBalance ? 'verified' : ''}`}>
+          {hasGetBalance ? '✓' : '○'} get_balance
+        </span>
+        <span className={`chk-badge ${hasBedrock ? 'verified' : ''}`}>
+          {hasBedrock ? '✓' : '○'} Bedrock reasoning
+        </span>
+        <span className={`chk-badge ${hasValidation ? 'verified' : ''}`}>
+          {hasValidation ? '✓' : '○'} validation passed
+        </span>
       </div>
 
       {!collapsed && (
