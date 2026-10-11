@@ -1,0 +1,22 @@
+{
+  "name": "khata-voice-infra",
+  "version": "1.0.0",
+  "description": "AWS CDK Infrastructure for KhataVoice",
+  "bin": {
+    "infra": "bin/app.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "cdk": "cdk",
+    "synth": "cdk synth",
+    "deploy": "cdk deploy"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "aws-cdk": "^2.179.0",
+    "aws-cdk-lib": "^2.179.0",
+    "constructs": "^10.4.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
+  }
+}
