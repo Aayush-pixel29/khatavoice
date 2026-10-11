@@ -163,7 +163,7 @@ export const CollectionsCopilot: React.FC<CollectionsCopilotProps> = ({
           <div className="copilot-priorities-section">
             <div className="priorities-section-title">
               <h3>Top Customers to Collect from Today</h3>
-              <span className="priorities-subtitle">Ranked by risk, aging, and recovery impact</span>
+              <span className="priorities-subtitle">Ranked by Collection Priority Score (amount and aging)</span>
             </div>
 
             {data.priorities.length === 0 ? (

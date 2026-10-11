@@ -172,4 +172,64 @@ describe('Blocker 2 & Gate 2: MCP Authentication Test Suite', () => {
       expect(parsed.result.serverInfo.name).toBe('khata-voice');
     });
   });
+
+  describe('Internal Application Routes Security Boundary (/api/voice/process & /api/copilot/collections)', () => {
+    it('1. Blocks unauthenticated POST /api/voice/process in production with HTTP 401', () => {
+      process.env.NODE_ENV = 'production';
+      process.env.MCP_API_KEY = TEST_KEY;
+      const req: any = { headers: {}, body: { text: 'test query' }, method: 'POST' };
+      let statusCode = 200;
+      let nextCalled = false;
+      const res: any = {
+        status(c: number) { statusCode = c; return this; },
+        json() { return this; }
+      };
+
+      mcpAuthMiddleware(req, res, () => { nextCalled = true; });
+      expect(nextCalled).toBe(false);
+      expect(statusCode).toBe(401);
+    });
+
+    it('2. Blocks unauthenticated GET /api/copilot/collections in production with HTTP 401', () => {
+      process.env.NODE_ENV = 'production';
+      process.env.MCP_API_KEY = TEST_KEY;
+      const req: any = { headers: {}, query: {}, method: 'GET' };
+      let statusCode = 200;
+      let nextCalled = false;
+      const res: any = {
+        status(c: number) { statusCode = c; return this; },
+        json() { return this; }
+      };
+
+      mcpAuthMiddleware(req, res, () => { nextCalled = true; });
+      expect(nextCalled).toBe(false);
+      expect(statusCode).toBe(401);
+    });
+
+    it('3. Allows authorized access to /api/copilot/collections with valid Bearer token in production', () => {
+      process.env.NODE_ENV = 'production';
+      process.env.MCP_API_KEY = TEST_KEY;
+      const req: any = {
+        headers: { authorization: `Bearer ${TEST_KEY}` },
+        query: {},
+        method: 'GET'
+      };
+      let nextCalled = false;
+      const res: any = { status() { return this; }, json() { return this; } };
+
+      mcpAuthMiddleware(req, res, () => { nextCalled = true; });
+      expect(nextCalled).toBe(true);
+    });
+
+    it('4. Allows access in local/development mode when MCP_API_KEY is not configured', () => {
+      process.env.NODE_ENV = 'development';
+      delete process.env.MCP_API_KEY;
+      const req: any = { headers: {}, query: {}, method: 'GET' };
+      let nextCalled = false;
+      const res: any = { status() { return this; }, json() { return this; } };
+
+      mcpAuthMiddleware(req, res, () => { nextCalled = true; });
+      expect(nextCalled).toBe(true);
+    });
+  });
 });

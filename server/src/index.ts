@@ -189,7 +189,8 @@ app.post('/mcp/message', async (req, res) => {
 });
 
 // 4. Voice Processing Bridge (Speech Transcript -> Bedrock / NLP -> MCP Tool -> Audio Ready String)
-app.post('/api/voice/process', async (req, res) => {
+// Trust boundary: Protected by mcpAuthMiddleware when MCP_API_KEY is configured or in production.
+app.post('/api/voice/process', mcpAuthMiddleware, async (req, res) => {
   const { text, merchant_id } = req.body;
 
   if (!text || typeof text !== 'string') {
@@ -263,7 +264,8 @@ app.post('/api/voice/process', async (req, res) => {
 });
 
 // 4b. Dedicated Collections Copilot Endpoint (Agentic reasoning over real MCP tools)
-app.post('/api/copilot/collections', async (req, res) => {
+// Trust boundary: Protected by mcpAuthMiddleware when MCP_API_KEY is configured or in production.
+app.post('/api/copilot/collections', mcpAuthMiddleware, async (req, res) => {
   const { merchant_id, query } = req.body;
   try {
     const plan = await collectionsCopilot.generatePlan({
@@ -280,7 +282,7 @@ app.post('/api/copilot/collections', async (req, res) => {
   }
 });
 
-app.get('/api/copilot/collections', async (req, res) => {
+app.get('/api/copilot/collections', mcpAuthMiddleware, async (req, res) => {
   const merchantId = (req.query.merchant_id as string) || 'default_merchant';
   const query = (req.query.query as string) || 'Who should I collect money from today?';
   try {
@@ -299,7 +301,8 @@ app.get('/api/copilot/collections', async (req, res) => {
 });
 
 // 5. Dashboard Ledger Data Endpoint (for React UI live state)
-app.get('/api/ledger/dashboard', async (req, res) => {
+// Trust boundary: Protected by mcpAuthMiddleware when MCP_API_KEY is configured or in production.
+app.get('/api/ledger/dashboard', mcpAuthMiddleware, async (req, res) => {
   const merchantId = (req.query.merchant_id as string) || 'default_merchant';
 
   try {
