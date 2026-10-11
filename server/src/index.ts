@@ -8,6 +8,7 @@ import {
   MCP_PROTOCOL_VERSION
 } from './server.js';
 import { VoiceParser } from './ai/parser.js';
+import { CollectionsCopilot } from './ai/collectionsCopilot.js';
 import { executeTool } from './tools/index.js';
 
 dotenv.config();
@@ -70,10 +71,11 @@ app.use(
 
 app.use(express.json());
 
-// Initialize store, MCP server, and voice parser
+// Initialize store, MCP server, voice parser, and Collections Copilot
 const store = getLedgerStore();
 const legacyMcpServer = new KhataVoiceMcpServer(store);
 const voiceParser = new VoiceParser();
+const collectionsCopilot = new CollectionsCopilot();
 
 // 3. Health check & Server Info
 app.get('/health', (_req, res) => {
@@ -197,6 +199,34 @@ app.post('/api/voice/process', async (req, res) => {
 
   try {
     const intent = await voiceParser.parseUtterance(text);
+
+    // If intent is Collections Copilot, route to agent orchestrator
+    if (intent.toolName === 'collections_copilot') {
+      const plan = await collectionsCopilot.generatePlan({
+        merchantId: merchant_id || 'default_merchant',
+        query: text
+      }, store);
+
+      res.json({
+        success: true,
+        userUtterance: text,
+        intent,
+        toolResult: {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(plan.copilotResult, null, 2)
+            }
+          ],
+          isError: false
+        },
+        copilotResult: plan.copilotResult,
+        voiceMessage: plan.voiceMessage,
+        mcpToolCalls: plan.mcpToolCalls
+      });
+      return;
+    }
+
     const toolArgs = {
       ...intent.arguments,
       merchant_id: merchant_id || intent.arguments.merchant_id || 'default_merchant'
@@ -229,6 +259,42 @@ app.post('/api/voice/process', async (req, res) => {
       success: false,
       error: errorMsg
     });
+  }
+});
+
+// 4b. Dedicated Collections Copilot Endpoint (Agentic reasoning over real MCP tools)
+app.post('/api/copilot/collections', async (req, res) => {
+  const { merchant_id, query } = req.body;
+  try {
+    const plan = await collectionsCopilot.generatePlan({
+      merchantId: merchant_id || 'default_merchant',
+      query: query || 'Who should I collect money from today?'
+    }, store);
+    res.json({
+      success: true,
+      ...plan
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, error: msg });
+  }
+});
+
+app.get('/api/copilot/collections', async (req, res) => {
+  const merchantId = (req.query.merchant_id as string) || 'default_merchant';
+  const query = (req.query.query as string) || 'Who should I collect money from today?';
+  try {
+    const plan = await collectionsCopilot.generatePlan({
+      merchantId,
+      query
+    }, store);
+    res.json({
+      success: true,
+      ...plan
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, error: msg });
   }
 });
 

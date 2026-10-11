@@ -1,15 +1,18 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Header } from './components/Header.js';
 import { VoiceController } from './components/VoiceController.js';
+import { CollectionsCopilot } from './components/CollectionsCopilot.js';
 import { SummaryCards } from './components/SummaryCards.js';
 import { DuesLeaderboard } from './components/DuesLeaderboard.js';
 import { LedgerTable } from './components/LedgerTable.js';
 import { CustomersList } from './components/CustomersList.js';
 import { MCPInspector } from './components/MCPInspector.js';
-import { DashboardData, McpLogEntry } from './types.js';
+import { DashboardData, McpLogEntry, CollectionsCopilotData } from './types.js';
 
 export const App: React.FC = () => {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [copilotData, setCopilotData] = useState<CollectionsCopilotData | null>(null);
+  const [copilotLoading, setCopilotLoading] = useState<boolean>(false);
   const [storageDriver, setStorageDriver] = useState<string>('memory');
   const [transportInfo, setTransportInfo] = useState<string>('Streamable HTTP (POST /mcp)');
   const [ttsEnabled, setTtsEnabled] = useState<boolean>(true);
@@ -94,7 +97,32 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Fetch health info and run MCP canonical handshake on mount
+  // Fetch Collections Copilot priorities
+  const refreshCopilot = useCallback(async () => {
+    setCopilotLoading(true);
+    try {
+      const res = await fetch('/api/copilot/collections');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.copilotResult) {
+          setCopilotData(data.copilotResult);
+        }
+        if (data.mcpToolCalls && Array.isArray(data.mcpToolCalls)) {
+          // Log underlying real MCP tool executions for developer visibility
+          for (const call of data.mcpToolCalls) {
+            addLog('OUT', 'STREAMABLE_HTTP_REQ', { method: 'tools/call', params: { name: call.tool, arguments: call.args } }, `tools/call:${call.tool}`);
+            addLog('IN', 'STREAMABLE_HTTP_RES', call.result, `tools/call:${call.tool}`);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to fetch Collections Copilot:', err);
+    } finally {
+      setCopilotLoading(false);
+    }
+  }, [addLog]);
+
+  // Fetch health info, run MCP canonical handshake, and initialize data on mount
   useEffect(() => {
     fetch('/health')
       .then((res) => res.json())
@@ -105,6 +133,7 @@ export const App: React.FC = () => {
       .catch(() => {});
 
     refreshDashboard();
+    refreshCopilot();
 
     // Canonical MCP Handshake on startup: initialize -> initialized -> tools/list
     const runStartupHandshake = async () => {
@@ -152,14 +181,14 @@ export const App: React.FC = () => {
     };
 
     runStartupHandshake();
-  }, [sendMcpPost, refreshDashboard]);
+  }, [sendMcpPost, refreshDashboard, refreshCopilot]);
 
   // Voice utterance processor
   const handleProcessUtterance = async (text: string) => {
     setIsProcessing(true);
 
     try {
-      // 1. Extract intent
+      // 1. Extract intent & process via voice pipeline
       const voiceRes = await fetch('/api/voice/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -167,8 +196,19 @@ export const App: React.FC = () => {
       });
       const voiceData = await voiceRes.json();
 
-      // 2. Execute canonical tools/call over POST /mcp
-      if (voiceData.intent?.toolName) {
+      // If it routed to Collections Copilot
+      if (voiceData.intent?.toolName === 'collections_copilot' && voiceData.copilotResult) {
+        setCopilotData(voiceData.copilotResult);
+        setLastVoiceResponse(voiceData.voiceMessage);
+
+        if (voiceData.mcpToolCalls && Array.isArray(voiceData.mcpToolCalls)) {
+          for (const call of voiceData.mcpToolCalls) {
+            addLog('OUT', 'STREAMABLE_HTTP_REQ', { method: 'tools/call', params: { name: call.tool, arguments: call.args } }, `tools/call:${call.tool}`);
+            addLog('IN', 'STREAMABLE_HTTP_RES', call.result, `tools/call:${call.tool}`);
+          }
+        }
+      } else if (voiceData.intent?.toolName) {
+        // Standard MCP tool call over canonical POST /mcp
         const mcpCallPayload = {
           jsonrpc: '2.0',
           id: reqIdRef.current++,
@@ -193,6 +233,9 @@ export const App: React.FC = () => {
         } else {
           setLastVoiceResponse(voiceData.voiceMessage);
         }
+
+        // Refresh copilot when ledger mutations occur
+        refreshCopilot();
       } else {
         setLastVoiceResponse(voiceData.voiceMessage);
       }
@@ -264,6 +307,15 @@ export const App: React.FC = () => {
         ttsEnabled={ttsEnabled}
       />
 
+      <CollectionsCopilot
+        data={copilotData}
+        isLoading={copilotLoading}
+        onRefresh={refreshCopilot}
+        onAskPrompt={handleProcessUtterance}
+        debtors={dashboard?.dues?.debtors || []}
+        ttsEnabled={ttsEnabled}
+      />
+
       <SummaryCards
         dailySummary={dashboard?.dailySummary}
         dues={dashboard?.dues}
@@ -291,3 +343,4 @@ export const App: React.FC = () => {
     </div>
   );
 };
+

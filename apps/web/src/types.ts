@@ -65,3 +65,17 @@ export interface McpLogEntry {
   method?: string;
   payload: any;
 }
+
+export interface PriorityItem {
+  customerName: string;
+  amount: number;
+  priority: number;
+  reason: string;
+}
+
+export interface CollectionsCopilotData {
+  summary: string;
+  totalOutstanding: number;
+  priorities: PriorityItem[];
+}
+

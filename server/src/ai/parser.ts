@@ -108,6 +108,33 @@ Based on the merchant's speech, you MUST invoke one of the provided tools (add_e
   public parseLocal(text: string): ParsedVoiceIntent {
     const lower = text.toLowerCase().trim();
 
+    // 0. Collections Copilot Intent Detection (Who to collect from today / priority collections)
+    if (
+      lower.includes('kin logon se paise') ||
+      lower.includes('who should i collect') ||
+      lower.includes('who to collect from') ||
+      lower.includes('kis customer ko call karu') ||
+      lower.includes('pehle kis customer') ||
+      lower.includes('sabse pehle kis') ||
+      lower.includes('kaun sabse zyada overdue') ||
+      lower.includes('sabse zyada overdue') ||
+      lower.includes('most overdue') ||
+      lower.includes('collection priority') ||
+      lower.includes('collection priorities') ||
+      lower.includes('collections copilot') ||
+      lower.includes('copilot') ||
+      lower.includes('kin se paise lene') ||
+      lower.includes('kisko call karu') ||
+      lower.includes('who owes the most')
+    ) {
+      return {
+        toolName: 'collections_copilot',
+        arguments: {},
+        confidence: 0.95,
+        reasoning: 'Matched Collections Copilot priority intent keywords'
+      };
+    }
+
     // 1. Daily Summary detection
     if (
       lower.includes('daily summary') ||
