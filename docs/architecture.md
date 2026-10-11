@@ -76,5 +76,21 @@ KhataVoice uses a pluggable Repository Pattern:
 A React + Vite web application serving as the evaluation interface. It provides:
 - Live audio waveform and Web Speech recognition (English & Hindi/Hinglish).
 - Real-time Ledger table.
+- Collections Copilot card with Top 3 priority debtor recommendations.
 - Overdue debts leaderboard with one-click WhatsApp payment reminders.
 - An interactive **MCP Inspector** showcasing real-time JSON-RPC 2.0 requests and SSE frames.
+
+## Phase 2: Collections Copilot Architecture
+The Collections Copilot is an autonomous reasoning feature that answers natural merchant collection questions (e.g., *"Aaj kin logon se paise lene chahiye?"* or *"Who should I collect money from today?"*).
+
+The Copilot invokes 3 real production MCP tools:
+1. **`get_dues`** (Arguments: `{ merchant_id, limit: 10 }`):
+   - Retrieves active debtors who have positive net debt (`netBalance > 0`), including debtor names, contact numbers, exact amounts owed, last transaction dates, and overdue days pending.
+   - **Why invoked**: Provides the primary candidate pool of debtors to be evaluated for collection priority.
+2. **`daily_summary`** (Arguments: `{ merchant_id }`):
+   - Calculates today's cash velocity, total credit extended, total payments received, and net cash flow across the store.
+   - **Why invoked**: Contextualizes today's cash position to evaluate overall store collection urgency.
+3. **`get_balance`** (Arguments: `{ merchant_id }` — `customer_name` omitted):
+   - When `customer_name` is omitted, `get_balance` runs in **store-wide aggregation mode** (`isStoreWide: true`), calculating aggregate store receivables (`totalDebit`), payables (`totalCredit`), and net overall balance across all customer accounts.
+   - **Why invoked**: Verifies store-wide ledger balance integrity and ensures total outstanding calculations reconcile accurately across the entire ledger.
+
